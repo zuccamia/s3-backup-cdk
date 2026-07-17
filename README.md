@@ -41,15 +41,29 @@ in a DynamoDB table (Table T) so the flow requires no scans.
 
 ## Table T schema
 
-Base table: **PK** `OriginalKey` (S), **SK** `CreatedAt` (N).
-Attributes: `CopyKey` (S), plus `DeletedAt` (N) and `DeletedFlag` (S,
-constant `"DELETED"`) set only when the original is deleted.
+**Base table** — `(OriginalKey, CreatedAt)` composite primary key. Every
+copy is its own row; rows sharing the same `OriginalKey` represent the
+current set of copies of a single Src object.
 
-Sparse GSI **`DeletedIndex`**: **PK** `DeletedFlag`, **SK** `DeletedAt`,
-projection `ALL`. Only rows with `DeletedFlag` set appear in the index,
-so the Cleaner queries disowned copies without scanning the table.
+| Attribute     | Type | Role                                          | Present when             |
+|---------------|------|-----------------------------------------------|--------------------------|
+| `OriginalKey` | S    | Partition key — the Src object name           | always                   |
+| `CreatedAt`   | N    | Sort key — epoch ms when the copy was made    | always                   |
+| `CopyKey`     | S    | Name of the copy in Dst                       | always                   |
+| `DeletedAt`   | N    | Epoch ms when the original was deleted in Src | only after DELETE event  |
+| `DeletedFlag` | S    | Constant `"DELETED"` — sparse-GSI partition   | only after DELETE event  |
 
-All three access patterns are `Query`, never `Scan`.
+**Sparse GSI `DeletedIndex`** — projection `ALL`. Only rows with
+`DeletedFlag` set appear in the index, so the Cleaner queries disowned
+copies without scanning the table.
+
+| Attribute     | Role                                                                |
+|---------------|---------------------------------------------------------------------|
+| `DeletedFlag` | GSI partition key (constant `"DELETED"` — sparse)                   |
+| `DeletedAt`   | GSI sort key — lets Cleaner range-query `DeletedAt < now-grace`     |
+
+All three access patterns (Replicator PUT count, Replicator DELETE
+marking, Cleaner sweep) are `Query`, never `Scan`.
 
 ## Prerequisites
 
@@ -65,10 +79,33 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Running local tests
+
+Dev-only dependencies (pytest + moto for in-process AWS mocks) live in a
+separate file so the runtime deploy stays lean:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The suite covers Replicator/Cleaner handler business logic against
+mocked S3 + DynamoDB, and CDK synth-time assertions on all three
+stacks. It requires no AWS credentials and runs in a few seconds.
+
 ## One-time per account/region
 
 ```bash
 npx aws-cdk bootstrap
+```
+
+## Preview
+
+Optional — synthesize the CloudFormation templates to `cdk.out/` without
+deploying, to eyeball what CDK will submit:
+
+```bash
+npx aws-cdk synth
 ```
 
 ## Deploy
