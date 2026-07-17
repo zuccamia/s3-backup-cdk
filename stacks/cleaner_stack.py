@@ -1,4 +1,4 @@
-"""Cleaner: EventBridge schedule → sweep disowned rows past the grace period."""
+"""Cleaner: EventBridge schedule → delete disowned copies from Dst + drop rows from Table T past the grace period."""
 
 import aws_cdk.aws_dynamodb as dynamodb
 import aws_cdk.aws_events as events
