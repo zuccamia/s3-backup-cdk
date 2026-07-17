@@ -1,0 +1,2 @@
+pytest>=8.0,<9.0
+moto[s3,dynamodb]>=5.0,<6.0
